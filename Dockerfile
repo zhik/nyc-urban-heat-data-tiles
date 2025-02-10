@@ -1,44 +1,42 @@
-FROM ghcr.io/osgeo/gdal:ubuntu-full-3.9.2
+FROM --platform=linux/amd64 ubuntu:22.04
 
-WORKDIR /data
+WORKDIR /app
 
-RUN apt-get update -qq \
-    && apt-get install --no-install-recommends -y \
-    python3-pip wget \
+# Install system dependencies
+RUN apt-get update && \
+    apt-get install -y \
+    python3-pip \
+    wget \
+    libgeos-dev \
+    libgdal-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# install conda
+# Install miniconda
 ENV PATH="/root/miniconda3/bin:${PATH}"
-ARG PATH="/root/miniconda3/bin:${PATH}"
-RUN wget \
-    https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh \
-    && mkdir /root/.conda \
-    && bash Miniconda3-latest-Linux-x86_64.sh -b \
-    && rm -f Miniconda3-latest-Linux-x86_64.sh 
+RUN wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh && \
+    bash Miniconda3-latest-Linux-x86_64.sh -b && \
+    rm Miniconda3-latest-Linux-x86_64.sh
 
-# install python packages and set default env (pin numpy=1.21 to avoid issues https://github.com/geopandas/geopandas/issues/2521)
-RUN conda install -n base conda-libmamba-solver 
-RUN conda config --set solver libmamba
-RUN conda create -n myenv -c conda-forge geopandas rasterio notebook pyarrow psycopg2 sqlalchemy geoalchemy2 pandas=1.4 numpy=1.22 shapely=2.0.0 -y 
-SHELL ["conda", "run", "-n", "myenv", "/bin/bash", "-c"]
-RUN echo "source activate myenv" > ~/.bashrc
-ENV PATH /opt/conda/envs/myenv/bin:$PATH
+# Create conda environment with core packages
+RUN conda create -n geo -y -c conda-forge \
+    python=3.10 \
+    notebook \
+    geopandas \
+    && conda clean -a -y
 
-RUN pip3 install rio-mbtiles rio-cogeo
+# Install rio-mbtiles in conda environment
+RUN conda run -n geo pip install rio-mbtiles python-dotenv boto3 psycopg2 SQLAlchemy
 
-# install pmtiles
-RUN wget https://github.com/protomaps/go-pmtiles/releases/download/v1.19.1/go-pmtiles_1.19.1_Linux_x86_64.tar.gz
-RUN tar xzf go-pmtiles_1.19.1_Linux_x86_64.tar.gz
-RUN cp pmtiles /usr/bin/pmtiles
+# Install pmtiles
+RUN wget https://github.com/protomaps/go-pmtiles/releases/download/v1.25.0/go-pmtiles_1.25.0_Linux_x86_64.tar.gz && \
+    tar xzf go-pmtiles_1.25.0_Linux_x86_64.tar.gz && \
+    cp pmtiles /usr/bin/pmtiles && \
+    rm go-pmtiles_1.25.0_Linux_x86_64.tar.gz
 
-RUN rm /data/*
+# Set default environment
+RUN echo "source activate geo" > ~/.bashrc
+ENV PATH /root/miniconda3/envs/geo/bin:$PATH
 
 EXPOSE 8888
-ENTRYPOINT [ "/bin/bash" ]
 
-# docker compose up -d
-# docker compose exec notebook /bin/bash
-# jupyter notebook --ip 0.0.0.0 --no-browser --allow-root
-
-
-
+CMD ["jupyter", "notebook", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--allow-root"]

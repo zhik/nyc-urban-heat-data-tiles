@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>PMTiles MapLibre DEM Hillshade Example</title>
+  <meta charset="utf-8" />
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.0/dist/maplibre-gl.css" crossorigin="anonymous">
+  <script src="https://unpkg.com/maplibre-gl@4.7.0/dist/maplibre-gl.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/pmtiles@4.2.1/dist/pmtiles.js"></script>
+  <style>
+    body {
+      margin: 0;
+    }
+
+    #map {
+      height: 100vh;
+      width: 100%;
+    }
+
+    #overlay {
+      position: absolute;
+      top: 1rem;
+      left: 1rem;
+      font: 600 16px sans-serif;
+      background-color: white;
+      border-radius: 4px;
+      padding: 0.5rem;
+      z-index: 1;
+    }
+
+    #info {
+      display: none;
+      position: absolute;
+      top: 0;
+      left: 0;
+      background: #2d2d2d;
+      border: 1px solid #bbbbbb;
+      color: #bbbbbb;
+      padding: 6px;
+      border-radius: 5px;
+      font-family: monospace;
+      font-size: 18px;
+      z-index: 2;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="map"></div>
+  <div id="overlay">DEM Hillshade Visualization</div>
+  <div id="info"></div>
+  <script type="text/javascript">
+    let protocol = new pmtiles.Protocol({ metadata: true });
+    maplibregl.addProtocol("pmtiles", protocol.tile);
+
+    const map = new maplibregl.Map({
+      container: "map",
+      center: [-74.006, 40.7128],
+      zoom: 10,
+      hash: true,
+      style: {
+        version: 8,
+        sources: {
+          dem_source: {
+            type: "raster-dem",
+            url: "pmtiles://https://urban-heat-portal-tiles.s3.us-east-1.amazonaws.com/test.pmtiles",
+            encoding: "terrarium"
+          }
+        },
+        layers: [
+          {
+            id: "dem-hillshade",
+            source: "dem_source",
+            type: "hillshade",
+            paint: {
+              "hillshade-shadow-color": "rgba(0, 0, 0, 0.5)",
+              "hillshade-highlight-color": "rgba(255, 255, 255, 0.3)",
+              "hillshade-accent-color": "rgba(0, 0, 0, 0.3)",
+              "hillshade-exaggeration": 0.5
+            }
+          }
+        ]
+      }
+    });
+
+    // Get the info element
+    const info = document.getElementById('info');
+
+    // Add mousemove event
+    map.on('mousemove', (e) => {
+      // Query the raster value at the mouse position
+      const features = map.queryRenderedFeatures(e.point, {
+        layers: ['dem-hillshade']
+      });
+
+      if (features.length > 0) {
+        // Query the elevation using the terrain source
+        const elevation = map.queryTerrainElevation(e.lngLat);
+
+        // Show info box
+        info.style.display = 'block';
+        // Position info box near mouse
+        info.style.left = (e.point.x + 10) + 'px';
+        info.style.top = (e.point.y + 10) + 'px';
+        // Display the elevation value
+        info.textContent = `Elevation: ${elevation !== null ? elevation.toFixed(2) + 'm' : 'N/A'}`;
+      } else {
+        info.style.display = 'none';
+      }
+    });
+
+    // Hide info box when mouse leaves the map
+    map.on('mouseout', () => {
+      info.style.display = 'none';
+    });
+  </script>
+</body>
+
+</html>

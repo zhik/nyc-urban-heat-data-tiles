@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>MapLibre COG Protocol Viewer</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/4.6.0/maplibre-gl.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/4.6.0/maplibre-gl.js"></script>
+  <script src="./maplibre-cog-protocol.js"></script>
+  <style>
+    html,
+    body,
+    #map {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    #info {
+      display: none;
+      position: absolute;
+      top: 0;
+      left: 0;
+      background: #2d2d2d;
+      border: 1px solid #bbbbbb;
+      color: #bbbbbb;
+      padding: 6px;
+      border-radius: 5px;
+      font-family: monospace;
+      font-size: 18px;
+      z-index: 1;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="map"></div>
+  <div id="info"></div>
+  <script>
+    let map = new maplibregl.Map({
+      container: 'map',
+      style: {
+        version: 8,
+        sources: {
+          'osm': {
+            type: 'raster',
+            tiles: [
+              'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
+            ],
+            tileSize: 256,
+            attribution: '© OpenStreetMap contributors'
+          }
+        },
+        layers: [
+          {
+            id: 'osm-layer',
+            type: 'raster',
+            source: 'osm',
+            paint: {
+              'raster-opacity': 1
+            }
+          }
+        ]
+      },
+      center: [-74.006, 40.7128],
+      zoom: 10,
+      hash: true
+    });
+
+    maplibregl.addProtocol('cog', MaplibreCOGProtocol.cogProtocol);
+
+    const cogUrl = 'https://urban-heat-portal-tiles.s3.us-east-1.amazonaws.com/ST_Clipped_20190922_cog.tif';
+    const tempStops = [
+      { stop: 60, color: [94, 79, 162] },    // Deep purple
+      { stop: 75, color: [152, 193, 217] },  // Light blue
+      { stop: 85, color: [255, 230, 168] },  // Light yellow
+      { stop: 95, color: [255, 187, 168] },  // Light salmon
+      { stop: 105, color: [214, 104, 82] },  // Salmon
+      { stop: 120, color: [81, 17, 19] }     // Dark burgundy
+    ];
+
+    // Function to interpolate color based on value
+    function interpolateColor(value) {
+      for (let i = 0; i < tempStops.length - 1; i++) {
+        if (value >= tempStops[i].stop && value <= tempStops[i + 1].stop) {
+          const t = (value - tempStops[i].stop) / (tempStops[i + 1].stop - tempStops[i].stop);
+          return [
+            Math.round(tempStops[i].color[0] * (1 - t) + tempStops[i + 1].color[0] * t),
+            Math.round(tempStops[i].color[1] * (1 - t) + tempStops[i + 1].color[1] * t),
+            Math.round(tempStops[i].color[2] * (1 - t) + tempStops[i + 1].color[2] * t)
+          ];
+        }
+      }
+      // If value is outside range, return the closest color
+      return value <= tempStops[0].stop ? tempStops[0].color : tempStops[tempStops.length - 1].color;
+    }
+
+
+    // Set color function for the COG
+    MaplibreCOGProtocol.setColorFunction(cogUrl, (pixel, color, metadata) => {
+      if (pixel[0] === metadata.noData) {
+        color.set([0, 0, 0, 0]); // Transparent for no data
+      } else {
+        const interpolatedColor = interpolateColor(pixel[0]);
+        color.set([...interpolatedColor, 255]); // Full opacity
+      }
+    });
+
+    map.on('load', () => {
+      map.addSource('imageSource', {
+        type: 'raster',
+        url: `cog://${cogUrl}`,
+        tileSize: 256
+      });
+
+      map.addLayer({
+        source: 'imageSource',
+        id: 'imageLayer',
+        type: 'raster',
+        paint: {
+          'raster-opacity': 0.7
+        }
+      });
+    });
+
+    map.on('drag', () => document.getElementById('info').style.display = 'none');
+
+    map.on('mousemove', (e) => {
+      const { lngLat: { lat: latitude, lng: longitude }, point: { x, y } } = e;
+      const zoom = map.getZoom();
+      document.getElementById('info').style.left = x + 10 + 'px';
+      document.getElementById('info').style.top = y + 20 + 'px';
+
+      MaplibreCOGProtocol.locationValues(
+        cogUrl,
+        { latitude, longitude },
+        zoom
+      ).then((values) => {
+        if (values.some(v => isNaN(v))) {
+          map.getCanvas().style.cursor = '';
+          document.getElementById('info').style.display = 'none';
+        } else {
+          map.getCanvas().style.cursor = 'default';
+          document.getElementById('info').style.display = 'block';
+          document.getElementById('info').innerHTML = `Temperature: <b>${values[0].toFixed(2)}°F</b>`;
+        }
+      });
+    });
+  </script>
+</body>
+
+</html>
